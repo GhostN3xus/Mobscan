@@ -259,6 +259,8 @@ class SCAModule(BaseAnalysisModule):
     - Problemas de licença
     - Dependências de risco alto
     - Supply chain attacks
+    - Versões pinned muito antigas
+    - Dependências transitivas perigosas
     """
 
     def __init__(self):
@@ -267,11 +269,11 @@ class SCAModule(BaseAnalysisModule):
         self.dependencies: List[Dependency] = []
 
     def execute(self, app_path: str, config: Dict[str, Any]) -> List[Finding]:
-        """Executa análise SCA"""
+        """Executa análise SCA completa"""
         self.findings = []
 
         try:
-            self.logger.info(f"Starting SCA analysis for {app_path}")
+            self.logger.info(f"Starting comprehensive SCA analysis for {app_path}")
 
             # Extrair dependências
             app_file = Path(app_path)
@@ -280,14 +282,20 @@ class SCAModule(BaseAnalysisModule):
             elif app_file.suffix.lower() == ".ipa":
                 self.dependencies = self.extractor.extract_from_ipa(app_path)
 
-            # Analisar vulnerabilidades
+            # Analisar vulnerabilidades com múltiplos tipos
             self._analyze_vulnerabilities()
+
+            # Verificar dependências de risco
+            self._analyze_high_risk_dependencies()
 
             # Verificar desatualização
             self._check_outdated_libraries()
 
             # Verificar dependências transitivas
             self._check_transitive_dependencies()
+
+            # Análise de supply chain
+            self._analyze_supply_chain_risks()
 
             self.logger.info(f"SCA analysis completed: {len(self.findings)} findings")
 
@@ -380,22 +388,138 @@ class SCAModule(BaseAnalysisModule):
             )
             self.findings.append(finding)
 
+    def _analyze_high_risk_dependencies(self) -> None:
+        """Analisa dependências conhecidamente de alto risco"""
+        high_risk_patterns = {
+            "webview": "WebView: Review all WebView implementations for XSS/injection",
+            "exec": "Exec: Runtime.exec() usage found - potential code injection",
+            "reflection": "Reflection: Heavy use of reflection may indicate obfuscation/anti-analysis",
+            "crypto": "Crypto: Direct crypto usage - verify implementation correctness",
+            "process": "Process: Direct process spawning - potential privilege escalation",
+        }
+
+        for dep in self.dependencies:
+            dep_name_lower = dep.name.lower()
+            for pattern, risk_msg in high_risk_patterns.items():
+                if pattern in dep_name_lower:
+                    finding = Finding(
+                        id=f"SCA-RISK-{len(self.findings) + 1:04d}",
+                        title=f"High-Risk Dependency: {dep.name}",
+                        description=f"{risk_msg}\n\nDependency: {dep.name} v{dep.version}",
+                        severity=FindingSeverity.MEDIUM.value,
+                        category="A06:2021 - Vulnerable and Outdated Components",
+                        module=AnalysisModule.SCA.value,
+                        cvss_score=5.0,
+                        cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N",
+                        cwe=["CWE-1104"],
+                        masvs_mapping=["MSTG-CODE-1"],
+                        mastg_mapping=["MASTG-CODE-1"],
+                        affected_component=dep.name,
+                        remediation=f"Review and audit usage of {dep.name}",
+                    )
+                    self.findings.append(finding)
+                    break
+
+    def _analyze_supply_chain_risks(self) -> None:
+        """Analisa riscos de supply chain"""
+        if not self.dependencies:
+            return
+
+        # Detectar uso de muitos pacotes de múltiplas origens
+        external_sources = len(set(d.name.split(':')[0] for d in self.dependencies if ':' in d.name))
+        native_libs = len([d for d in self.dependencies if d.type == 'native_library'])
+
+        if native_libs > 3:
+            finding = Finding(
+                id=f"SCA-SUPPLY-{len(self.findings) + 1:04d}",
+                title="Excessive Native Libraries",
+                description=f"Application includes {native_libs} native libraries. "
+                           f"This increases the attack surface and makes security auditing more difficult.",
+                severity=FindingSeverity.MEDIUM.value,
+                category="A06:2021 - Vulnerable and Outdated Components",
+                module=AnalysisModule.SCA.value,
+                cvss_score=4.3,
+                cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+                cwe=["CWE-665"],
+                masvs_mapping=["MSTG-CODE-2"],
+                mastg_mapping=["MASTG-CODE-2"],
+                affected_component="Dependency Management",
+                remediation="Minimize native library dependencies and audit those that are necessary",
+            )
+            self.findings.append(finding)
+
+        if external_sources > 10:
+            finding = Finding(
+                id=f"SCA-SUPPLY-{len(self.findings) + 1:04d}",
+                title="High Number of External Dependencies",
+                description=f"Application depends on {external_sources} external package sources. "
+                           f"This increases supply chain attack risk.",
+                severity=FindingSeverity.LOW.value,
+                category="A06:2021 - Vulnerable and Outdated Components",
+                module=AnalysisModule.SCA.value,
+                cvss_score=3.7,
+                cvss_vector="CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N",
+                cwe=["CWE-1104"],
+                masvs_mapping=["MSTG-CODE-1"],
+                mastg_mapping=["MASTG-CODE-1"],
+                affected_component="Dependency Management",
+                remediation="Regularly audit and minimize dependencies. Use dependency pinning.",
+            )
+            self.findings.append(finding)
+
     def get_dependency_report(self) -> Dict[str, Any]:
-        """Gera relatório de dependências"""
+        """Gera relatório detalhado de dependências"""
         vulnerable_deps = [d for d in self.dependencies if d.is_vulnerable]
+        native_libs = [d for d in self.dependencies if d.type == 'native_library']
 
         return {
-            "total_dependencies": len(self.dependencies),
-            "vulnerable_dependencies": len(vulnerable_deps),
-            "vulnerabilities": sum(len(d.vulnerabilities) for d in vulnerable_deps),
+            "summary": {
+                "total_dependencies": len(self.dependencies),
+                "vulnerable_dependencies": len(vulnerable_deps),
+                "native_libraries": len(native_libs),
+                "vulnerabilities_total": sum(len(d.vulnerabilities) for d in vulnerable_deps),
+                "risk_score": self._calculate_dependency_risk_score(),
+            },
             "dependencies": [
                 {
                     "name": d.name,
                     "version": d.version,
                     "type": d.type,
                     "is_vulnerable": d.is_vulnerable,
-                    "vulnerabilities": d.vulnerabilities
+                    "vulnerabilities": d.vulnerabilities,
+                    "outdated": VulnerabilityDatabase.is_outdated(d.name.lower(), d.version)
                 }
                 for d in self.dependencies
+            ],
+            "vulnerable_list": [
+                {
+                    "name": d.name,
+                    "version": d.version,
+                    "vulnerabilities": d.vulnerabilities
+                }
+                for d in vulnerable_deps
             ]
         }
+
+    def _calculate_dependency_risk_score(self) -> float:
+        """Calcula score de risco de dependências (0-10)"""
+        if not self.dependencies:
+            return 0.0
+
+        risk_score = 0.0
+        vulnerable_count = len([d for d in self.dependencies if d.is_vulnerable])
+        native_count = len([d for d in self.dependencies if d.type == 'native_library'])
+
+        # Vulnerabilidades = até 5 pontos
+        if vulnerable_count > 0:
+            risk_score += min(5.0, vulnerable_count * 0.5)
+
+        # Native libs = até 2 pontos
+        if native_count > 3:
+            risk_score += min(2.0, (native_count - 3) * 0.3)
+
+        # Número total de deps = até 3 pontos
+        if len(self.dependencies) > 20:
+            risk_score += min(3.0, (len(self.dependencies) - 20) * 0.1)
+
+        return min(10.0, risk_score)
