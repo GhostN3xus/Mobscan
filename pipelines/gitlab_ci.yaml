@@ -1,0 +1,195 @@
+stages:
+  - test
+  - scan
+  - report
+  - deploy
+
+variables:
+  DOCKER_IMAGE: "mobscan:latest"
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  REPORTS_DIR: "$CI_PROJECT_DIR/reports"
+
+cache:
+  paths:
+    - .cache/pip
+    - venv/
+
+before_script:
+  - python --version
+  - pip install -r requirements.txt
+
+# =========================
+# UNIT TESTS
+# =========================
+
+test:unit:
+  stage: test
+  image: python:3.11
+  script:
+    - pip install pytest pytest-cov
+    - pytest tests/ --cov=mobscan --cov-report=term --cov-report=html --cov-report=xml
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - htmlcov/
+    expire_in: 30 days
+  coverage: '/TOTAL.*\s+(\d+%)$/'
+
+test:lint:
+  stage: test
+  image: python:3.11
+  script:
+    - pip install black flake8 mypy pylint
+    - black --check mobscan/
+    - flake8 mobscan/ --max-line-length=120
+    - mypy mobscan/ --ignore-missing-imports
+    - pylint mobscan/ --fail-under=8.0 || true
+  allow_failure: true
+
+test:security:
+  stage: test
+  image: python:3.11
+  script:
+    - pip install safety bandit
+    - safety check
+    - bandit -r mobscan/ --skip B101
+  allow_failure: true
+
+# =========================
+# MOBILE SECURITY SCAN
+# =========================
+
+scan:android:
+  stage: scan
+  image: mobscan:latest
+  script:
+    - mkdir -p $REPORTS_DIR/android
+    - |
+      if [ -f "builds/app.apk" ]; then
+        mobscan scan builds/app.apk \
+          --platform android \
+          --output-dir $REPORTS_DIR/android \
+          --format json,pdf,markdown \
+          --intensity full \
+          --masvs-level L1 L2 \
+          --parallel 4 \
+          --timeout 3600 \
+          --verbose
+      else
+        echo "Android APK not found"
+      fi
+  artifacts:
+    paths:
+      - $REPORTS_DIR/android/
+    expire_in: 90 days
+  allow_failure: true
+  only:
+    - main
+    - develop
+    - merge_requests
+
+scan:ios:
+  stage: scan
+  image: mobscan:latest
+  script:
+    - mkdir -p $REPORTS_DIR/ios
+    - |
+      if [ -f "builds/app.ipa" ]; then
+        mobscan scan builds/app.ipa \
+          --platform ios \
+          --output-dir $REPORTS_DIR/ios \
+          --format json,pdf,markdown \
+          --intensity full \
+          --masvs-level L1 L2 \
+          --parallel 4 \
+          --timeout 3600 \
+          --verbose
+      else
+        echo "iOS IPA not found"
+      fi
+  artifacts:
+    paths:
+      - $REPORTS_DIR/ios/
+    expire_in: 90 days
+  allow_failure: true
+  only:
+    - main
+    - develop
+    - merge_requests
+
+# =========================
+# REPORT GENERATION
+# =========================
+
+report:summary:
+  stage: report
+  image: python:3.11
+  script:
+    - pip install pandas jinja2
+    - python scripts/generate_summary.py $REPORTS_DIR
+  artifacts:
+    paths:
+      - $REPORTS_DIR/summary.html
+      - $REPORTS_DIR/summary.json
+    expire_in: 90 days
+  dependencies:
+    - scan:android
+    - scan:ios
+  allow_failure: true
+
+report:dashboard:
+  stage: report
+  image: nginx:latest
+  script:
+    - echo "Dashboard would be deployed here"
+  artifacts:
+    paths:
+      - $REPORTS_DIR/
+  only:
+    - main
+  allow_failure: true
+
+# =========================
+# DEPLOYMENT
+# =========================
+
+deploy:docker:
+  stage: deploy
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA -f docker/Dockerfile .
+    - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE:latest
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE:latest
+  only:
+    - main
+
+deploy:api:
+  stage: deploy
+  image: docker-compose:latest
+  script:
+    - docker-compose -f docker-compose.yaml up -d
+  environment:
+    name: production
+    url: https://mobscan.example.com
+  only:
+    - main
+  when: manual
+
+# =========================
+# NOTIFICATIONS
+# =========================
+
+.notify:
+  after_script:
+    - |
+      if [ "$CI_JOB_STATUS" = "success" ]; then
+        curl -X POST $WEBHOOK_URL \
+          -H "Content-Type: application/json" \
+          -d '{"status": "success", "pipeline": "'$CI_PIPELINE_ID'"}'
+      fi

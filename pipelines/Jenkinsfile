@@ -1,0 +1,219 @@
+pipeline {
+    agent any
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '10'))
+        timestamps()
+        timeout(time: 4, unit: 'HOURS')
+    }
+
+    environment {
+        PYTHON_VERSION = '3.11'
+        REPORTS_DIR = "${WORKSPACE}/reports"
+        VENV_DIR = "${WORKSPACE}/venv"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                sh 'git log --oneline -5'
+            }
+        }
+
+        stage('Environment Setup') {
+            steps {
+                sh '''
+                    python${PYTHON_VERSION} -m venv ${VENV_DIR}
+                    . ${VENV_DIR}/bin/activate
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+                '''
+            }
+        }
+
+        stage('Unit Tests') {
+            steps {
+                sh '''
+                    . ${VENV_DIR}/bin/activate
+                    pip install pytest pytest-cov
+                    pytest tests/ --cov=mobscan --cov-report=xml --cov-report=html
+                '''
+            }
+            post {
+                always {
+                    junit 'test-results.xml'
+                    publishHTML([
+                        reportDir: 'htmlcov',
+                        reportFiles: 'index.html',
+                        reportName: 'Code Coverage'
+                    ])
+                }
+            }
+        }
+
+        stage('Code Quality') {
+            steps {
+                sh '''
+                    . ${VENV_DIR}/bin/activate
+                    pip install black flake8 mypy pylint
+                    black --check mobscan/ || true
+                    flake8 mobscan/ --max-line-length=120 --format=json > flake8-report.json || true
+                    mypy mobscan/ --ignore-missing-imports --junit-xml mypy-report.xml || true
+                '''
+            }
+            post {
+                always {
+                    step([$class: 'WarningsPublisher', parsingRulesPath: '', consoleParsers: [[parserName: 'PyLint']]])
+                }
+            }
+        }
+
+        stage('Security Scan') {
+            when {
+                branch 'develop'
+            }
+            steps {
+                sh '''
+                    . ${VENV_DIR}/bin/activate
+                    pip install bandit safety
+                    bandit -r mobscan/ -f json -o bandit-report.json || true
+                    safety check --json > safety-report.json || true
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: '*-report.json', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Mobile App Scan') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh '''
+                    . ${VENV_DIR}/bin/activate
+                    mkdir -p ${REPORTS_DIR}/android ${REPORTS_DIR}/ios
+
+                    # Android Scan
+                    if [ -f "builds/app.apk" ]; then
+                        echo "Scanning Android app..."
+                        mobscan scan builds/app.apk \\
+                            --platform android \\
+                            --output-dir ${REPORTS_DIR}/android \\
+                            --format json,pdf,markdown \\
+                            --intensity full \\
+                            --masvs-level L1 L2 \\
+                            --parallel 4 \\
+                            --timeout 3600 \\
+                            --verbose
+                    fi
+
+                    # iOS Scan
+                    if [ -f "builds/app.ipa" ]; then
+                        echo "Scanning iOS app..."
+                        mobscan scan builds/app.ipa \\
+                            --platform ios \\
+                            --output-dir ${REPORTS_DIR}/ios \\
+                            --format json,pdf,markdown \\
+                            --intensity full \\
+                            --masvs-level L1 L2 \\
+                            --parallel 4 \\
+                            --timeout 3600 \\
+                            --verbose
+                    fi
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh '''
+                    docker build -t mobscan:${BUILD_NUMBER} -f docker/Dockerfile .
+                    docker tag mobscan:${BUILD_NUMBER} mobscan:latest
+                '''
+            }
+        }
+
+        stage('Deploy API') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh '''
+                    docker-compose -f docker-compose.yaml up -d
+                    sleep 10
+                    curl http://localhost:8000/health || echo "Health check failed"
+                '''
+            }
+            post {
+                always {
+                    sh 'docker-compose -f docker-compose.yaml logs'
+                }
+            }
+        }
+
+        stage('Generate Reports') {
+            steps {
+                sh '''
+                    . ${VENV_DIR}/bin/activate
+                    python scripts/generate_summary.py ${REPORTS_DIR}
+                    python scripts/parse_results.py ${REPORTS_DIR}
+                '''
+            }
+            post {
+                always {
+                    publishHTML([
+                        reportDir: 'reports',
+                        reportFiles: 'summary.html',
+                        reportName: 'Security Report'
+                    ])
+                }
+            }
+        }
+
+        stage('Notifications') {
+            steps {
+                script {
+                    // Slack notification
+                    sh '''
+                        curl -X POST ${SLACK_WEBHOOK_URL} \\
+                            -H "Content-Type: application/json" \\
+                            -d '{
+                                "text": "Mobscan Pipeline: Build '${BUILD_NUMBER}' completed",
+                                "attachments": [{
+                                    "color": "good",
+                                    "fields": [{
+                                        "title": "Build Status",
+                                        "value": "SUCCESS"
+                                    }]
+                                }]
+                            }' || true
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline successful!'
+        }
+        failure {
+            echo 'Pipeline failed!'
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
