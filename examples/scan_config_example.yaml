@@ -1,0 +1,373 @@
+# Mobscan Configuration Example
+# Copy this file and customize for your environment
+
+# Project Information
+project:
+  name: "My Mobile Security Project"
+  description: "Security testing for our mobile applications"
+  version: "1.0.0"
+
+# Scan Settings
+scan:
+  intensity: "full"  # quick, standard, full, comprehensive
+  timeout_global: 7200  # seconds (2 hours)
+  parallel_workers: 4
+  cache_enabled: true
+  cache_ttl: 14400  # 4 hours
+
+# Module Configuration
+modules:
+  enabled:
+    - sast       # Static analysis
+    - dast       # Dynamic analysis
+    - frida      # Runtime instrumentation
+
+  sast:
+    enabled: true
+    tools:
+      - mobsf
+      - jadx
+      - ghidra
+      - semgrep
+
+  dast:
+    enabled: true
+    tools:
+      - mitmproxy
+      - api_tester
+      - burp
+
+  frida:
+    enabled: true
+    auto_generate_hooks: true
+    bypass_scripts: true
+
+# Platform Configuration
+platforms:
+  android:
+    enabled: true
+    min_api_level: 21
+    target_api_level: 33
+    emulator:
+      enabled: false
+      image: "emulator-5554"
+      port: 5555
+    device:
+      use_adb: true
+      serial: null  # Set if using specific device
+    proxy:
+      enabled: true
+      host: "127.0.0.1"
+      port: 8080
+      ca_cert: null
+
+  ios:
+    enabled: false
+    min_version: "11.0"
+    target_version: "17.0"
+    device:
+      use_physical: false
+      simulator: "iPhone 15"
+    proxy:
+      enabled: true
+      host: "127.0.0.1"
+      port: 8080
+
+# Tool Configurations
+tools:
+  mobsf:
+    enabled: true
+    docker_image: "mobsf/mobsf:latest"
+    version: "3.8.1"
+    port: 8001
+    timeout: 3600
+    arguments:
+      api_only: false
+      scan_all: true
+
+  frida:
+    enabled: true
+    version: "16.0.0"
+    server_port: 27042
+    timeout: 1800
+    spawn_mode: true
+    auto_hooks:
+      - "java.lang.String"
+      - "android.content.SharedPreferences"
+      - "javax.net.ssl.SSLContext"
+
+  mitmproxy:
+    enabled: true
+    docker_image: "mitmproxy/mitmproxy:latest"
+    mode: "regular"
+    port: 8080
+    cert_dir: "./.mitmproxy"
+    timeout: 3600
+
+  jadx:
+    enabled: true
+    version: "1.4.0"
+    decompilation_level: 3
+    timeout: 1800
+
+  ghidra:
+    enabled: false
+    version: "11.0"
+    timeout: 3600
+
+  apktool:
+    enabled: true
+    version: "2.7.0"
+    framework_dir: null
+
+# MASVS Configuration
+masvs:
+  levels: ["L1", "L2"]  # Add "R" for resilience
+  auto_map: true
+  calculate_compliance: true
+
+  # L1 Requirements Settings
+  l1:
+    enabled: true
+    strict: false
+
+  # L2 Requirements Settings
+  l2:
+    enabled: true
+    strict: false
+
+  # Resilience Requirements Settings
+  resilience:
+    enabled: false
+    strict: false
+
+# Reporting Configuration
+reporting:
+  enabled: true
+
+  # Output Formats
+  formats:
+    - json
+    - pdf
+    - markdown
+    - docx
+    - html
+
+  # Report Contents
+  include:
+    technical_details: true
+    evidence: true
+    screenshots: true
+    logs: true
+    remediation: true
+    executive_summary: true
+    masvs_mapping: true
+    trend_analysis: false
+
+  # Filtering
+  severity_threshold: "Low"  # Only report findings >= threshold
+  exclude_info: false  # Exclude informational findings
+
+  # Directories
+  output_directory: "./reports"
+  template_directory: "./templates"
+
+  # Advanced
+  include_empty_sections: false
+  auto_remediation: true
+  generate_metrics: true
+
+# Storage Configuration
+storage:
+  type: "local"  # local, database, cloud
+
+  local:
+    base_path: "./storage"
+    compress_archives: true
+
+  database:
+    enabled: false
+    type: "postgresql"
+    connection_string: "postgresql://user:password@localhost:5432/mobscan"
+    ssl_mode: "require"
+
+  cloud:
+    enabled: false
+    provider: "aws"  # aws, azure, gcp
+    bucket: "mobscan-results"
+    region: "us-east-1"
+    credentials: null  # Use environment variables
+
+# Logging Configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "json"  # json, text
+
+  console:
+    enabled: true
+    colored: true
+
+  file:
+    enabled: true
+    path: "./logs/mobscan.log"
+    max_size_mb: 100
+    backup_count: 10
+
+  syslog:
+    enabled: false
+    host: "localhost"
+    port: 514
+    facility: "LOG_LOCAL0"
+
+# API Configuration
+api:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  timeout: 300
+  cors_origins:
+    - "*"
+
+  # Authentication
+  auth:
+    enabled: true
+    type: "jwt"  # jwt, api_key, oauth2
+    jwt_secret: "your-secret-key-change-this"
+    api_keys:
+      - "key-1"
+      - "key-2"
+
+  # Rate Limiting
+  rate_limit:
+    enabled: true
+    requests_per_minute: 60
+    requests_per_hour: 1000
+
+# Integration Configuration
+integrations:
+  # Slack Notifications
+  slack:
+    enabled: false
+    webhook_url: null
+    channel: "#security"
+    notify_on:
+      - critical_found
+      - scan_completed
+      - high_findings
+
+  # Email Notifications
+  email:
+    enabled: false
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    from_address: "security@company.com"
+    recipients:
+      - "team@company.com"
+    tls: true
+
+  # Jira Integration
+  jira:
+    enabled: false
+    server_url: null
+    username: null
+    api_token: null
+    project_key: "SEC"
+    issue_type: "Security Finding"
+
+  # GitHub Integration
+  github:
+    enabled: false
+    repository: "org/repo"
+    token: null
+    create_issues: true
+    create_pr_comments: true
+
+  # GitLab Integration
+  gitlab:
+    enabled: false
+    server_url: "https://gitlab.com"
+    project_id: null
+    token: null
+
+# Custom Rules
+custom_rules:
+  enabled: false
+  rules_path: "./rules"
+  auto_load: true
+
+  rules:
+    - id: "custom-rule-1"
+      title: "Custom Vulnerability"
+      pattern: "insecure_pattern"
+      severity: "HIGH"
+      category: "Custom"
+
+# Performance Tuning
+performance:
+  # Caching
+  cache:
+    sast_results: true
+    tool_outputs: true
+    reference_data: true
+    ttl_hours: 24
+
+  # Parallelization
+  parallelization:
+    max_workers: 4
+    chunk_size: 100
+    timeout_per_task: 1800
+
+  # Memory Management
+  memory:
+    limit_mb: 4096
+    gc_threshold: 1000
+    stream_large_files: true
+
+# Security Settings
+security:
+  # Secrets Management
+  secrets:
+    mask_output: true
+    encrypt_reports: false
+    tls_verify: true
+
+  # Data Protection
+  data:
+    anonymize_personally_identifiable: false
+    data_retention_days: 90
+    delete_temp_files: true
+
+  # Network
+  network:
+    use_proxy: false
+    proxy_url: null
+    verify_ssl: true
+
+# Development Settings (Only for dev environment!)
+development:
+  debug_mode: false
+  enable_profiling: false
+  save_temp_files: false
+  skip_tool_validation: false
+
+# Advanced Features
+advanced:
+  # AI/ML Features
+  ai_assisted_analysis: false
+  predictive_findings: false
+  anomaly_detection: false
+
+  # Experimental Features
+  experimental_features: false
+  incremental_scanning: false
+  smart_deduplication: true
+
+# Metadata
+metadata:
+  organization: "Your Organization"
+  department: "Security"
+  project_owner: "Security Team"
+  tags:
+    - "android"
+    - "critical-app"
