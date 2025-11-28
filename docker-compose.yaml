@@ -1,0 +1,152 @@
+version: '3.8'
+
+services:
+  # Main Mobscan API
+  mobscan-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: mobscan-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apps:/apps
+      - ./reports:/reports
+      - ./cache:/app/.cache
+    environment:
+      MOBSCAN_LOG_LEVEL: INFO
+      MOBSCAN_PARALLEL_WORKERS: 4
+      MOBSCAN_TIMEOUT: 7200
+    networks:
+      - mobscan
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      - redis
+      - postgres
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: mobscan-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - mobscan
+    command: redis-server --appendonly yes
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: mobscan-postgres
+    environment:
+      POSTGRES_DB: mobscan
+      POSTGRES_USER: mobscan
+      POSTGRES_PASSWORD: mobscan_secure_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - mobscan
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mobscan"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MobSF Container (Static Analysis)
+  mobsf:
+    image: mobsf/mobsf:latest
+    container_name: mobscan-mobsf
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./apps:/home/mobsf/apps
+      - ./reports:/home/mobsf/reports
+    networks:
+      - mobscan
+    environment:
+      MobSF_PORT: 8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/config"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # mitmproxy for MITM testing
+  mitmproxy:
+    image: mitmproxy/mitmproxy:latest
+    container_name: mobscan-mitmproxy
+    ports:
+      - "8080:8080"    # HTTP proxy
+      - "8081:8081"    # Dashboard
+    volumes:
+      - ./mitmproxy_config:/root/.mitmproxy
+    networks:
+      - mobscan
+    command: mitmweb --web-host 0.0.0.0 --web-port 8081
+
+  # Nginx Reverse Proxy & Dashboard
+  nginx:
+    image: nginx:alpine
+    container_name: mobscan-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+      - ./reports:/var/www/html/reports:ro
+    networks:
+      - mobscan
+    depends_on:
+      - mobscan-api
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: Frida Server for Android/iOS
+  frida-server:
+    image: keymanager/android-sdk:latest
+    container_name: mobscan-frida
+    ports:
+      - "27042:27042"
+    volumes:
+      - ./apps:/apps
+    networks:
+      - mobscan
+    command: sh -c "pip install frida frida-tools && frida-server -l 0.0.0.0"
+    depends_on:
+      - mobscan-api
+
+  # Optional: PostgreSQL pgAdmin
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: mobscan-pgadmin
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@mobscan.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+    networks:
+      - mobscan
+    depends_on:
+      - postgres
+
+networks:
+  mobscan:
+    driver: bridge
+
+volumes:
+  redis_data:
+  postgres_data:
+  mobsf_data:
