@@ -12,11 +12,33 @@ from datetime import datetime
 from pathlib import Path
 import concurrent.futures
 import json
+import hashlib
+import zipfile
+import xml.etree.ElementTree as ET
 
 from ..models.scan_result import ScanResult, ApplicationInfo, TestCoverage, RiskMetrics
 from ..models.finding import Finding, Severity
 from ..models.masvs_mapping import MAVSMapping, MAVSLevel
 from .config import MobscanConfig
+
+# Report generation imports
+try:
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+    from reportlab.lib import colors
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
+
+try:
+    from docx import Document
+    from docx.shared import Inches, Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    PYTHON_DOCX_AVAILABLE = True
+except ImportError:
+    PYTHON_DOCX_AVAILABLE = False
 
 
 logger = logging.getLogger(__name__)
@@ -99,19 +121,85 @@ class TestEngine:
     def _extract_app_info(self, app_path: str) -> ApplicationInfo:
         """
         Extract application information from APK/IPA.
-
-        This is a placeholder - in production, integrate with real parsers.
         """
         app_file = Path(app_path)
 
+        if not app_file.exists():
+            raise FileNotFoundError(f"Application file not found: {app_path}")
+
+        file_size = app_file.stat().st_size
+        platform = "android" if app_file.suffix.lower() == ".apk" else "ios"
+
+        # Calculate SHA256 hash
+        file_hash = self._calculate_file_hash(app_path)
+
+        # Extract platform-specific info
+        if platform == "android":
+            package_name, version, app_name = self._extract_apk_info(app_path)
+        else:
+            # For iOS, extract basic info (real extraction would need plistlib)
+            package_name = app_file.stem
+            version = "1.0.0"
+            app_name = app_file.stem
+
         return ApplicationInfo(
-            app_name=app_file.stem,
-            package_name="com.example.app",  # Would extract from manifest
-            version="1.0.0",                 # Would extract from manifest
-            platform="android" if app_file.suffix == ".apk" else "ios",
-            file_size=app_file.stat().st_size,
-            file_hash="",  # Would calculate SHA256
+            app_name=app_name or app_file.stem,
+            package_name=package_name or app_file.stem,
+            version=version or "1.0.0",
+            platform=platform,
+            file_size=file_size,
+            file_hash=file_hash,
         )
+
+    def _calculate_file_hash(self, filepath: str) -> str:
+        """Calculate SHA256 hash of a file"""
+        sha256_hash = hashlib.sha256()
+        try:
+            with open(filepath, "rb") as f:
+                for byte_block in iter(lambda: f.read(4096), b""):
+                    sha256_hash.update(byte_block)
+            return sha256_hash.hexdigest()
+        except Exception as e:
+            self.logger.warning(f"Failed to calculate file hash: {e}")
+            return ""
+
+    def _extract_apk_info(self, apk_path: str) -> tuple[str, str, str]:
+        """
+        Extract package name, version, and app name from APK manifest.
+
+        Returns:
+            Tuple of (package_name, version, app_name)
+        """
+        try:
+            with zipfile.ZipFile(apk_path, 'r') as apk:
+                # Read AndroidManifest.xml
+                manifest_data = apk.read('AndroidManifest.xml')
+
+                # Parse binary XML (simplified approach)
+                # For production, use androguard library
+                package_name = "com.app"
+                version = "1.0"
+                app_name = Path(apk_path).stem
+
+                # Try to extract from manifest if readable
+                try:
+                    manifest_text = manifest_data.decode('utf-8', errors='ignore')
+                    if 'package=' in manifest_text:
+                        # Simple extraction (real parsing would use XML parser)
+                        parts = manifest_text.split('package=')
+                        if len(parts) > 1:
+                            package_name = parts[1].split('"')[1]
+                    if 'versionName=' in manifest_text:
+                        parts = manifest_text.split('versionName=')
+                        if len(parts) > 1:
+                            version = parts[1].split('"')[1]
+                except:
+                    pass
+
+                return package_name, version, app_name
+        except Exception as e:
+            self.logger.warning(f"Failed to extract APK info: {e}")
+            return Path(apk_path).stem, "1.0.0", Path(apk_path).stem
 
     def load_test_modules(self):
         """Load and register all test modules"""
@@ -299,9 +387,52 @@ class TestEngine:
 
     def _calculate_masvs_compliance(self):
         """Calculate MASVS compliance levels"""
-        # This would calculate L1, L2, and R compliance
-        # Implementation would check if requirements are met/failed
-        pass
+        if not self.scan_result:
+            return
+
+        # Get all MASVS requirements by level
+        l1_requirements = MAVSMapping.get_requirements_by_level(MAVSLevel.L1)
+        l2_requirements = MAVSMapping.get_requirements_by_level(MAVSLevel.L2)
+        r_requirements = MAVSMapping.get_requirements_by_level(MAVSLevel.R)
+
+        # Build set of failed requirements from findings
+        failed_requirements = set()
+        for finding in self.scan_result.findings:
+            if finding.masvs_category:
+                failed_requirements.add(finding.masvs_category)
+
+        # Calculate compliance for L1
+        l1_passed = sum(1 for req in l1_requirements if req.id not in failed_requirements)
+        l1_coverage = l1_passed / len(l1_requirements) * 100 if l1_requirements else 0
+
+        # Calculate compliance for L2
+        l2_passed = sum(1 for req in l2_requirements if req.id not in failed_requirements)
+        l2_coverage = l2_passed / len(l2_requirements) * 100 if l2_requirements else 0
+
+        # Calculate compliance for R
+        r_passed = sum(1 for req in r_requirements if req.id not in failed_requirements)
+        r_coverage = r_passed / len(r_requirements) * 100 if r_requirements else 0
+
+        # Store compliance in scan result
+        self.scan_result.masvs_compliance = {
+            "L1": {
+                "coverage": round(l1_coverage, 2),
+                "passed": l1_passed,
+                "total": len(l1_requirements)
+            },
+            "L2": {
+                "coverage": round(l2_coverage, 2),
+                "passed": l2_passed,
+                "total": len(l2_requirements)
+            },
+            "R": {
+                "coverage": round(r_coverage, 2),
+                "passed": r_passed,
+                "total": len(r_requirements)
+            }
+        }
+
+        self.logger.info(f"MASVS Compliance - L1: {l1_coverage:.1f}% | L2: {l2_coverage:.1f}% | R: {r_coverage:.1f}%")
 
     def generate_report(self, format: str = "json") -> str:
         """
@@ -330,16 +461,206 @@ class TestEngine:
             raise ValueError(f"Unsupported format: {format}")
 
     def _generate_pdf_report(self) -> str:
-        """Generate PDF report"""
+        """Generate PDF report using reportlab"""
         self.logger.info("Generating PDF report...")
-        # Implementation would use reportlab or similar
-        return "report.pdf"
+
+        if not REPORTLAB_AVAILABLE:
+            self.logger.warning("reportlab not available, falling back to markdown format")
+            return self._generate_markdown_report()
+
+        try:
+            filename = f"mobscan_report_{self.scan_result.scan_id}.pdf"
+            filepath = Path(filename)
+
+            # Create PDF document
+            doc = SimpleDocTemplate(str(filepath), pagesize=A4)
+            story = []
+            styles = getSampleStyleSheet()
+
+            # Title
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=24,
+                textColor=colors.HexColor('#1f4788'),
+                spaceAfter=30,
+                alignment=1  # Center
+            )
+            story.append(Paragraph("Security Assessment Report", title_style))
+            story.append(Spacer(1, 0.3*inch))
+
+            # Executive Summary
+            story.append(Paragraph("Executive Summary", styles['Heading2']))
+            summary_data = [
+                ["Application Name", self.scan_result.app_info.app_name],
+                ["Package Name", self.scan_result.app_info.package_name],
+                ["Platform", self.scan_result.app_info.platform.upper()],
+                ["Scan Date", self.scan_result.started_at.isoformat()],
+                ["Risk Score", f"{self.scan_result.risk_metrics.risk_score}/10"],
+            ]
+            summary_table = Table(summary_data, colWidths=[2*inch, 4*inch])
+            summary_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e8eef7')),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 11),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+            ]))
+            story.append(summary_table)
+            story.append(Spacer(1, 0.3*inch))
+
+            # Findings Summary
+            story.append(Paragraph("Findings Summary", styles['Heading2']))
+            findings_data = [
+                ["Severity", "Count"],
+                ["Critical", str(self.scan_result.risk_metrics.critical_count)],
+                ["High", str(self.scan_result.risk_metrics.high_count)],
+                ["Medium", str(self.scan_result.risk_metrics.medium_count)],
+                ["Low", str(self.scan_result.risk_metrics.low_count)],
+                ["Info", str(self.scan_result.risk_metrics.info_count)],
+            ]
+            findings_table = Table(findings_data, colWidths=[2*inch, 2*inch])
+            findings_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f4788')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 11),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+            ]))
+            story.append(findings_table)
+            story.append(Spacer(1, 0.3*inch))
+
+            # Detailed Findings
+            if self.scan_result.findings:
+                story.append(PageBreak())
+                story.append(Paragraph("Detailed Findings", styles['Heading2']))
+
+                for finding in self.scan_result.findings:
+                    # Finding title
+                    finding_title = f"{finding.title} ({finding.severity.value})"
+                    story.append(Paragraph(finding_title, styles['Heading3']))
+
+                    # Finding details
+                    details_data = [
+                        ["CVSS Score", str(finding.cvss.get('score', 'N/A'))],
+                        ["Component", finding.affected_component],
+                        ["MASTG Reference", finding.mastg_category],
+                    ]
+                    details_table = Table(details_data, colWidths=[1.5*inch, 4.5*inch])
+                    details_table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+                        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, -1), 10),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                        ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                    ]))
+                    story.append(details_table)
+
+                    # Finding description
+                    story.append(Paragraph(finding.description, styles['Normal']))
+                    story.append(Spacer(1, 0.2*inch))
+
+            # Build PDF
+            doc.build(story)
+            self.logger.info(f"PDF report generated: {filename}")
+            return filename
+
+        except Exception as e:
+            self.logger.error(f"Error generating PDF report: {e}")
+            return self._generate_markdown_report()
 
     def _generate_docx_report(self) -> str:
-        """Generate DOCX report"""
+        """Generate DOCX report using python-docx"""
         self.logger.info("Generating DOCX report...")
-        # Implementation would use python-docx
-        return "report.docx"
+
+        if not PYTHON_DOCX_AVAILABLE:
+            self.logger.warning("python-docx not available, falling back to markdown format")
+            return self._generate_markdown_report()
+
+        try:
+            filename = f"mobscan_report_{self.scan_result.scan_id}.docx"
+
+            # Create document
+            doc = Document()
+
+            # Title
+            title = doc.add_heading("Security Assessment Report", level=1)
+            title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            # Executive Summary
+            doc.add_heading("Executive Summary", level=2)
+            summary_table = doc.add_table(rows=6, cols=2)
+            summary_table.style = 'Light Grid Accent 1'
+            summary_data = [
+                ["Application Name", self.scan_result.app_info.app_name],
+                ["Package Name", self.scan_result.app_info.package_name],
+                ["Platform", self.scan_result.app_info.platform.upper()],
+                ["Scan Date", self.scan_result.started_at.isoformat()],
+                ["Risk Score", f"{self.scan_result.risk_metrics.risk_score}/10"],
+            ]
+            for i, (key, value) in enumerate(summary_data):
+                summary_table.rows[i].cells[0].text = key
+                summary_table.rows[i].cells[1].text = value
+
+            doc.add_paragraph()
+
+            # Findings Summary
+            doc.add_heading("Findings Summary", level=2)
+            findings_table = doc.add_table(rows=7, cols=2)
+            findings_table.style = 'Light Grid Accent 1'
+            findings_table.rows[0].cells[0].text = "Severity"
+            findings_table.rows[0].cells[1].text = "Count"
+            findings_table.rows[1].cells[0].text = "Critical"
+            findings_table.rows[1].cells[1].text = str(self.scan_result.risk_metrics.critical_count)
+            findings_table.rows[2].cells[0].text = "High"
+            findings_table.rows[2].cells[1].text = str(self.scan_result.risk_metrics.high_count)
+            findings_table.rows[3].cells[0].text = "Medium"
+            findings_table.rows[3].cells[1].text = str(self.scan_result.risk_metrics.medium_count)
+            findings_table.rows[4].cells[0].text = "Low"
+            findings_table.rows[4].cells[1].text = str(self.scan_result.risk_metrics.low_count)
+            findings_table.rows[5].cells[0].text = "Info"
+            findings_table.rows[5].cells[1].text = str(self.scan_result.risk_metrics.info_count)
+
+            doc.add_page_break()
+
+            # Detailed Findings
+            if self.scan_result.findings:
+                doc.add_heading("Detailed Findings", level=2)
+
+                for finding in self.scan_result.findings:
+                    # Finding title
+                    doc.add_heading(f"{finding.title} ({finding.severity.value})", level=3)
+
+                    # Finding details table
+                    details_table = doc.add_table(rows=4, cols=2)
+                    details_table.style = 'Light Grid Accent 1'
+                    details_table.rows[0].cells[0].text = "CVSS Score"
+                    details_table.rows[0].cells[1].text = str(finding.cvss.get('score', 'N/A'))
+                    details_table.rows[1].cells[0].text = "Component"
+                    details_table.rows[1].cells[1].text = finding.affected_component
+                    details_table.rows[2].cells[0].text = "MASTG Reference"
+                    details_table.rows[2].cells[1].text = finding.mastg_category
+                    details_table.rows[3].cells[0].text = "CWE"
+                    details_table.rows[3].cells[1].text = ", ".join(finding.cwe) if finding.cwe else "N/A"
+
+                    # Finding description
+                    doc.add_paragraph(finding.description)
+                    doc.add_paragraph()
+
+            # Save document
+            doc.save(filename)
+            self.logger.info(f"DOCX report generated: {filename}")
+            return filename
+
+        except Exception as e:
+            self.logger.error(f"Error generating DOCX report: {e}")
+            return self._generate_markdown_report()
 
     def _generate_markdown_report(self) -> str:
         """Generate Markdown report"""
