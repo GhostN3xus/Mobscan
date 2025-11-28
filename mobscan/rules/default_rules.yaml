@@ -1,0 +1,275 @@
+"""
+Default Vulnerability Rules for Mobscan
+
+Regras para detecção de vulnerabilidades comuns em aplicações móveis.
+Segue padrões OWASP MASTG/MASVS.
+"""
+
+rules:
+  - id: RULE-001
+    pattern: 'Cipher\.getInstance\(["\']DES["\']'
+    severity: critical
+    category: "A02:2021 - Cryptographic Failures"
+    description: "Weak Cryptography: DES Algorithm Detected"
+    remediation: "Use AES-256 or other strong cryptographic algorithms"
+    masvs:
+      - MSTG-CRYPTO-1
+      - MSTG-CRYPTO-2
+    cwe:
+      - CWE-327
+      - CWE-326
+    test_cases:
+      - "Cipher.getInstance(\"DES\")"
+      - 'Cipher.getInstance("DES")'
+
+  - id: RULE-002
+    pattern: 'MessageDigest\.getInstance\(["\']MD5["\']'
+    severity: high
+    category: "A02:2021 - Cryptographic Failures"
+    description: "Weak Hash Function: MD5 Detected"
+    remediation: "Use SHA-256 or other secure hash functions"
+    masvs:
+      - MSTG-CRYPTO-1
+    cwe:
+      - CWE-327
+    test_cases:
+      - "MessageDigest.getInstance(\"MD5\")"
+
+  - id: RULE-003
+    pattern: 'api[_-]?key\s*[=:]\s*["\']([a-zA-Z0-9]+)["\']'
+    severity: critical
+    category: "A02:2021 - Cryptographic Failures"
+    description: "Hardcoded API Key Found"
+    remediation: "Remove hardcoded credentials and use secure credential management"
+    masvs:
+      - MSTG-STORAGE-1
+    cwe:
+      - CWE-798
+    test_cases:
+      - "api_key = 'AIzaSyDxLKlStzB5KeHqqz3_JjCh3tJJZfqL6dU'"
+      - "apiKey: \"sk_live_XXXXXXXXXXXXXXXXXXXX\""
+
+  - id: RULE-004
+    pattern: 'password\s*[=:]\s*["\']([^"\']+)["\']'
+    severity: critical
+    category: "A02:2021 - Cryptographic Failures"
+    description: "Hardcoded Password Found"
+    remediation: "Use secure credential storage mechanisms"
+    masvs:
+      - MSTG-STORAGE-1
+    cwe:
+      - CWE-798
+    test_cases:
+      - 'password = "admin123"'
+      - "password: mySecurePassword123"
+
+  - id: RULE-005
+    pattern: 'SharedPreferences.*getSharedPreferences\(["\']'
+    severity: high
+    category: "A01:2021 - Broken Access Control"
+    description: "Unencrypted SharedPreferences Access"
+    remediation: "Use EncryptedSharedPreferences from AndroidX Security library"
+    masvs:
+      - MSTG-STORAGE-1
+      - MSTG-STORAGE-2
+    cwe:
+      - CWE-312
+      - CWE-313
+    test_cases:
+      - "getSharedPreferences(\"prefs\", Context.MODE_PRIVATE)"
+
+  - id: RULE-006
+    pattern: 'setJavaScriptEnabled\(true\)'
+    severity: high
+    category: "A03:2021 - Injection"
+    description: "WebView JavaScript Enabled"
+    remediation: "Disable JavaScript or implement strict CSP policies"
+    masvs:
+      - MSTG-PLATFORM-2
+    cwe:
+      - CWE-95
+    test_cases:
+      - "webView.getSettings().setJavaScriptEnabled(true)"
+
+  - id: RULE-007
+    pattern: 'addJavascriptInterface\('
+    severity: critical
+    category: "A03:2021 - Injection"
+    description: "WebView JavaScript Interface Exposed"
+    remediation: "Remove addJavascriptInterface or use strict method restrictions"
+    masvs:
+      - MSTG-PLATFORM-2
+    cwe:
+      - CWE-95
+    test_cases:
+      - 'webView.addJavascriptInterface(new JSInterface(), "android")'
+
+  - id: RULE-008
+    pattern: 'android:debuggable\s*=\s*["\']true["\']'
+    severity: high
+    category: "A05:2021 - Security Misconfiguration"
+    description: "Application Debuggable Flag Set"
+    remediation: "Set android:debuggable to false in production builds"
+    masvs:
+      - MSTG-RESILIENCE-2
+    cwe:
+      - CWE-489
+    test_cases:
+      - 'android:debuggable="true"'
+
+  - id: RULE-009
+    pattern: 'Runtime\.getRuntime\(\)\.exec\('
+    severity: high
+    category: "A03:2021 - Injection"
+    description: "Runtime Command Execution"
+    remediation: "Avoid using Runtime.exec() with user input"
+    masvs:
+      - MSTG-CODE-1
+    cwe:
+      - CWE-78
+    test_cases:
+      - "Runtime.getRuntime().exec(command)"
+
+  - id: RULE-010
+    pattern: 'ObjectInputStream'
+    severity: critical
+    category: "A08:2021 - Software and Data Integrity Failures"
+    description: "Insecure Deserialization"
+    remediation: "Use secure serialization mechanisms or validate input"
+    masvs:
+      - MSTG-CODE-7
+    cwe:
+      - CWE-502
+    test_cases:
+      - "new ObjectInputStream(inputStream)"
+
+  - id: RULE-011
+    pattern: 'http://.*api'
+    severity: high
+    category: "A04:2021 - Insecure Design"
+    description: "Unencrypted HTTP Communication"
+    remediation: "Use HTTPS for all API communications"
+    masvs:
+      - MSTG-NET-1
+    cwe:
+      - CWE-295
+    test_cases:
+      - "http://api.example.com/users"
+
+  - id: RULE-012
+    pattern: 'Log\.(d|e|i|v|w)\(.*password.*\)'
+    severity: high
+    category: "A09:2021 - Security Logging and Monitoring Failures"
+    description: "Sensitive Data Logged"
+    remediation: "Remove logging of sensitive data or use data masking"
+    masvs:
+      - MSTG-STORAGE-3
+    cwe:
+      - CWE-532
+    test_cases:
+      - "Log.d(\"TAG\", \"password: \" + password)"
+
+  - id: RULE-013
+    pattern: 'System\.out\.println\(.*password.*\)'
+    severity: high
+    category: "A09:2021 - Security Logging and Monitoring Failures"
+    description: "Password Printed to Console"
+    remediation: "Remove debug prints in production code"
+    masvs:
+      - MSTG-STORAGE-3
+    cwe:
+      - CWE-532
+    test_cases:
+      - "System.out.println(\"User password: \" + password)"
+
+  - id: RULE-014
+    pattern: 'TrustManager\[\]\s*{.*null.*}'
+    severity: critical
+    category: "A04:2021 - Insecure Design"
+    description: "Custom TrustManager Accepting All Certificates"
+    remediation: "Implement proper certificate validation"
+    masvs:
+      - MSTG-NET-2
+      - MSTG-NET-3
+    cwe:
+      - CWE-295
+    test_cases:
+      - "new TrustManager[] { new X509TrustManager() { public void checkClientTrusted(X509Certificate[] chain, String authType) {} } }"
+
+  - id: RULE-015
+    pattern: 'SQLiteDatabase\.rawQuery\('
+    severity: medium
+    category: "A03:2021 - Injection"
+    description: "Potential SQL Injection via rawQuery"
+    remediation: "Use parameterized queries or prepared statements"
+    masvs:
+      - MSTG-CODE-1
+    cwe:
+      - CWE-89
+    test_cases:
+      - "db.rawQuery(\"SELECT * FROM users WHERE id = \" + userId)"
+
+  - id: RULE-016
+    pattern: 'Cipher\.getInstance\(["\']ECB["\']'
+    severity: high
+    category: "A02:2021 - Cryptographic Failures"
+    description: "ECB Mode Encryption (Weak)"
+    remediation: "Use CBC, CTR, or GCM modes instead of ECB"
+    masvs:
+      - MSTG-CRYPTO-1
+    cwe:
+      - CWE-327
+    test_cases:
+      - 'Cipher.getInstance("AES/ECB/PKCS5Padding")'
+
+  - id: RULE-017
+    pattern: 'SecureRandom\(\)\.nextInt\(Integer\.MAX_VALUE\)'
+    severity: medium
+    category: "A02:2021 - Cryptographic Failures"
+    description: "Weak Random Number Generation"
+    remediation: "Use proper random generation or better entropy"
+    masvs:
+      - MSTG-CRYPTO-3
+    cwe:
+      - CWE-338
+    test_cases:
+      - "new SecureRandom().nextInt(Integer.MAX_VALUE)"
+
+  - id: RULE-018
+    pattern: '\.checkSelfPermission\(\)'
+    severity: medium
+    category: "A01:2021 - Broken Access Control"
+    description: "Dynamic Permission Check (API 23+)"
+    remediation: "Ensure proper runtime permission handling"
+    masvs:
+      - MSTG-PLATFORM-1
+    cwe:
+      - CWE-250
+    test_cases:
+      - "if (Build.VERSION.SDK_INT >= 23) { if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {} }"
+
+  - id: RULE-019
+    pattern: 'Intent.*FLAG_ACTIVITY_NEW_TASK'
+    severity: medium
+    category: "A01:2021 - Broken Access Control"
+    description: "Intent Flag Can Lead to Activity Hijacking"
+    remediation: "Validate intent and use appropriate flags"
+    masvs:
+      - MSTG-PLATFORM-3
+    cwe:
+      - CWE-927
+    test_cases:
+      - "Intent intent = new Intent(); intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);"
+
+  - id: RULE-020
+    pattern: 'android:exported\s*=\s*["\']true["\']'
+    severity: high
+    category: "A01:2021 - Broken Access Control"
+    description: "Exported Component Without Permission Protection"
+    remediation: "Add permission restrictions or set exported to false"
+    masvs:
+      - MSTG-PLATFORM-1
+    cwe:
+      - CWE-927
+    test_cases:
+      - 'android:exported="true"'

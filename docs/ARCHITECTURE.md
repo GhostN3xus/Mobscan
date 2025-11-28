@@ -1,8 +1,17 @@
-# Mobscan Architecture Documentation
+# Mobscan Enterprise Security Architecture
+
+## Enterprise Mobile Security Automation Framework
+
+Mobscan is an enterprise-grade mobile security automation framework built to rigorously follow OWASP MASTG (Mobile Application Security Testing Guide) and MASVS (Mobile Application Security Verification Standard).
 
 ## Table of Contents
 
-1. [Overview](#overview)
+1. [Architecture Overview](#architecture-overview)
+2. [Core Components](#core-components)
+3. [Analysis Pipeline](#analysis-pipeline)
+4. [Modules](#modules)
+5. [Integration](#integration)
+6. [Standards & Compliance](#standards--compliance)
 2. [High-Level Architecture](#high-level-architecture)
 3. [Core Components](#core-components)
 4. [Data Flow](#data-flow)
