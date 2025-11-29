@@ -7,8 +7,11 @@ Provides utility functions for file management, platform detection, etc.
 import os
 import shutil
 import tempfile
+import logging
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 def get_app_platform(app_path: str) -> str:
@@ -69,7 +72,7 @@ def cleanup_temp_files(dir_path: Optional[str] = None):
                 elif item.is_file():
                     item.unlink(missing_ok=True)
     except Exception as e:
-        pass
+        logger.warning(f"Failed to cleanup temp directories: {e}")
 
 
 def get_file_size_mb(file_path: str) -> float:

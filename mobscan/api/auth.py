@@ -19,7 +19,12 @@ from mobscan.api.schemas import TokenData
 logger = logging.getLogger(__name__)
 
 # Configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production-123456")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError(
+        "SECRET_KEY environment variable must be set. "
+        "Generate a secure key with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("TOKEN_EXPIRY_MINUTES", 30))
 
@@ -205,14 +210,18 @@ def validate_api_key(db: Session, api_key: str) -> Optional[User]:
         User object if valid, None otherwise
     """
     try:
-        # Hash the provided key to compare with stored hash
-        # In production, you'd store a hash of the API key
-        # For now, we'll do simple lookup (not recommended for production)
+        # Get all active API keys for verification
+        active_keys = db.query(APIKey).filter(APIKey.is_active == True).all()
 
-        api_key_obj = db.query(APIKey).filter(
-            APIKey.key_hash == api_key,
-            APIKey.is_active == True
-        ).first()
+        # Find matching key by verifying hash
+        api_key_obj = None
+        for key in active_keys:
+            try:
+                if pwd_context.verify(api_key, key.key_hash):
+                    api_key_obj = key
+                    break
+            except Exception:
+                continue
 
         if not api_key_obj:
             logger.warning("Invalid API key")
