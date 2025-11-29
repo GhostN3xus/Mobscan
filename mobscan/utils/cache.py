@@ -6,7 +6,6 @@ and other cacheable artifacts to improve performance.
 """
 
 import redis
-import pickle
 import json
 from typing import Any, Optional, Dict, Union
 from datetime import timedelta
@@ -119,16 +118,14 @@ class RedisCacheBackend(CacheBackend):
             value = self.redis_client.get(key)
             if value is None:
                 return None
-            # Try to deserialize as pickle (for complex objects)
+
+            # Deserialize from JSON
             try:
-                return pickle.loads(value)
-            except (pickle.UnpicklingError, TypeError):
-                # If pickle fails, try JSON
-                try:
-                    return json.loads(value.decode('utf-8') if isinstance(value, bytes) else value)
-                except (json.JSONDecodeError, AttributeError):
-                    # Return raw value if all else fails
-                    return value
+                return json.loads(value.decode('utf-8') if isinstance(value, bytes) else value)
+            except (json.JSONDecodeError, AttributeError, UnicodeDecodeError):
+                # Return raw value if JSON deserialization fails
+                logger.warning(f"Failed to deserialize cache value for key '{key}', returning raw value")
+                return value
         except Exception as e:
             logger.warning(f"Error retrieving from cache: {e}")
             return None
@@ -141,15 +138,14 @@ class RedisCacheBackend(CacheBackend):
 
         try:
             ttl = ttl or self.ttl_default
-            # Try to serialize as pickle
+
+            # Serialize as JSON
             try:
-                serialized = pickle.dumps(value)
-            except (pickle.PicklingError, TypeError):
-                # If pickle fails, try JSON
-                try:
-                    serialized = json.dumps(value).encode('utf-8')
-                except TypeError:
-                    serialized = str(value).encode('utf-8')
+                serialized = json.dumps(value).encode('utf-8')
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Value not JSON serializable for key '{key}': {e}")
+                # Fallback to string representation
+                serialized = str(value).encode('utf-8')
 
             self.redis_client.setex(key, ttl, serialized)
             logger.debug(f"Cached key '{key}' with TTL {ttl}s")

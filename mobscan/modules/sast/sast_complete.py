@@ -13,6 +13,13 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 import xml.etree.ElementTree as ET
 
+try:
+    from androguard.core.bytecodes.apk import APK as AndroguardAPK
+    ANDROGUARD_AVAILABLE = True
+except ImportError:
+    ANDROGUARD_AVAILABLE = False
+    logger.warning("androguard not available, APK parsing will be limited")
+
 from ...core.analysis_manager import BaseAnalysisModule, AnalysisModule, Finding, FindingSeverity, EvidenceItem
 from .ast_engine import ASTEngine, TaintAnalyzer, ControlFlowAnalyzer, VulnerabilityDetector
 
@@ -85,21 +92,59 @@ class SASTModule(BaseAnalysisModule):
     def _extract_metadata(self, app_path: str) -> None:
         """Extrai metadados da aplicação"""
         try:
-            with zipfile.ZipFile(app_path, 'r') as apk:
-                # Ler AndroidManifest.xml
-                manifest_data = apk.read('AndroidManifest.xml')
-                self._parse_android_manifest(manifest_data)
+            if ANDROGUARD_AVAILABLE:
+                # Use androguard para parsing correto do AndroidManifest binário
+                apk = AndroguardAPK(app_path)
+                self._parse_android_manifest_androguard(apk)
+            else:
+                # Fallback para parsing simples (limitado)
+                self.logger.warning("Using fallback manifest parsing - install androguard for better results")
+                with zipfile.ZipFile(app_path, 'r') as apk:
+                    manifest_data = apk.read('AndroidManifest.xml')
+                    self._parse_android_manifest_fallback(manifest_data)
 
         except Exception as e:
             self.logger.warning(f"Failed to extract metadata: {str(e)}")
 
-    def _parse_android_manifest(self, manifest_data: bytes) -> None:
-        """Parse simplificado do AndroidManifest"""
-        # Em produção, usaria androguard para parser binário correto
-        manifest_text = manifest_data.decode('utf-8', errors='ignore')
-
-        # Extração simples
+    def _parse_android_manifest_androguard(self, apk: 'AndroguardAPK') -> None:
+        """Parse AndroidManifest usando androguard (método correto)"""
         try:
+            package_name = apk.get_package() or "unknown"
+            version = apk.get_androidversion_name() or "unknown"
+            target_sdk = apk.get_target_sdk_version() or 0
+            min_sdk = apk.get_min_sdk_version() or 0
+            debuggable = apk.is_debuggable()
+
+            permissions = apk.get_permissions() or []
+            activities = apk.get_activities() or []
+            services = apk.get_services() or []
+            receivers = apk.get_receivers() or []
+
+            self.apk_metadata = APKMetadata(
+                package_name=package_name,
+                version=version,
+                target_sdk=target_sdk,
+                min_sdk=min_sdk,
+                debuggable=debuggable,
+                permissions=permissions,
+                activities=activities,
+                services=services,
+                broadcast_receivers=receivers,
+            )
+
+        except Exception as e:
+            self.logger.warning(f"Error parsing manifest with androguard: {str(e)}")
+            self._create_default_metadata()
+
+    def _parse_android_manifest_fallback(self, manifest_data: bytes) -> None:
+        """Parse simplificado do AndroidManifest (fallback quando androguard não disponível)"""
+        self.logger.warning("Using fallback manifest parser - results may be incomplete")
+
+        try:
+            # Tento decodificar como texto, mas isso é limitado para manifests binários
+            manifest_text = manifest_data.decode('utf-8', errors='ignore')
+
+            # Extração simples - MUITO limitada
             package_match = manifest_text.find('package=')
             if package_match >= 0:
                 start = manifest_text.find('"', package_match) + 1
@@ -112,9 +157,9 @@ class SASTModule(BaseAnalysisModule):
 
             self.apk_metadata = APKMetadata(
                 package_name=package_name,
-                version="1.0.0",
-                target_sdk=31,
-                min_sdk=21,
+                version="unknown",
+                target_sdk=0,
+                min_sdk=0,
                 debuggable=debuggable,
                 permissions=[],
                 activities=[],
@@ -123,7 +168,22 @@ class SASTModule(BaseAnalysisModule):
             )
 
         except Exception as e:
-            self.logger.warning(f"Error parsing manifest: {str(e)}")
+            self.logger.warning(f"Error parsing manifest (fallback): {str(e)}")
+            self._create_default_metadata()
+
+    def _create_default_metadata(self) -> None:
+        """Cria metadados padrão quando parsing falha"""
+        self.apk_metadata = APKMetadata(
+            package_name="unknown",
+            version="unknown",
+            target_sdk=0,
+            min_sdk=0,
+            debuggable=False,
+            permissions=[],
+            activities=[],
+            services=[],
+            broadcast_receivers=[],
+        )
 
     def _analyze_application(self, app_path: str) -> None:
         """Analisa arquivos da aplicação"""

@@ -73,13 +73,16 @@ class TestEngine:
         logger = logging.getLogger("mobscan.engine")
         logger.setLevel(getattr(logging, self.config.log_level))
 
-        # Console handler
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
+        # Only add handler if logger doesn't already have handlers
+        # This prevents duplicate handlers on multiple initializations
+        if not logger.handlers:
+            # Console handler
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
 
         return logger
 

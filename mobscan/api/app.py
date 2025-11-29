@@ -21,6 +21,7 @@ from typing import List, Optional
 from pathlib import Path
 import json
 import uuid
+import os
 from datetime import datetime
 
 from ..core.engine import TestEngine
@@ -63,12 +64,27 @@ def create_app() -> FastAPI:
         logger.warning(f"Database initialization: {e}")
 
     # CORS middleware - Secure configuration
+    # Allow origins from environment variable or use secure defaults
+    allowed_origins = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8080")
+    allowed_origins_list = [origin.strip() for origin in allowed_origins.split(",")]
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000", "http://localhost:8080"],  # Specific origins
+        allow_origins=allowed_origins_list,  # Specific origins from env
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        # Explicitly list allowed headers instead of "*" for security
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Accept",
+            "Origin",
+            "User-Agent",
+            "DNT",
+            "Cache-Control",
+            "X-Requested-With",
+        ],
+        max_age=600,  # Cache preflight requests for 10 minutes
     )
 
     # Security headers middleware

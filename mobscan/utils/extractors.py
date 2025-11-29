@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Dict, Optional
 import zipfile
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def extract_apk_info(apk_path: str) -> Dict[str, str]:
@@ -50,11 +53,11 @@ def extract_apk_info(apk_path: str) -> Dict[str, str]:
                             parts = manifest_text.split('package=')
                             if len(parts) > 1:
                                 info['package_name'] = parts[1].split('"')[1]
-                        except:
-                            pass
+                        except Exception as parse_err:
+                            logger.debug(f"Failed to parse package name: {parse_err}")
 
         except Exception as e:
-            pass
+            logger.warning(f"Failed to extract APK metadata from zipfile: {e}")
 
         return info
 
@@ -103,10 +106,10 @@ def extract_ipa_info(ipa_path: str) -> Dict[str, str]:
                 if plist_path:
                     # Would parse plist here
                     # For now, just indicate we found it
-                    pass
+                    logger.debug(f"Found Info.plist at {plist_path}")
 
         except Exception as e:
-            pass
+            logger.warning(f"Failed to extract IPA metadata from zipfile: {e}")
 
         return info
 
@@ -139,10 +142,10 @@ def get_apk_permissions(apk_path: str) -> list:
                 # Real implementation would use proper XML parsing
                 if 'uses-permission' in manifest_text:
                     # Extract android:name attributes
-                    pass
+                    logger.debug("Found uses-permission in manifest")
 
     except Exception as e:
-        pass
+        logger.warning(f"Failed to extract APK permissions: {e}")
 
     return permissions
 
@@ -164,9 +167,9 @@ def get_apk_activities(apk_path: str) -> list:
             if 'AndroidManifest.xml' in apk.namelist():
                 manifest_data = apk.read('AndroidManifest.xml')
                 # Would parse activities here
-                pass
+                logger.debug("Reading AndroidManifest.xml for activities")
 
     except Exception as e:
-        pass
+        logger.warning(f"Failed to extract APK activities: {e}")
 
     return activities
