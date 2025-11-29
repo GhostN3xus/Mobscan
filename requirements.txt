@@ -66,13 +66,33 @@ msgpack==1.0.7
 plotly==5.18.0
 dash==2.14.1
 
-# APK/IPA Analysis (optional)
+# APK/IPA Analysis
 androguard==4.1.0
+frida-tools==12.3.0
 # objection would be installed via pip or as system dependency
 # mobsf would be Docker-based
-# frida would be installed via pip: frida, frida-tools
 
-# Optional extras for advanced features
-# google-cloud-storage==2.14.0  # For cloud integration
-# redis==5.0.1  # For caching
-# celery==5.3.4  # For distributed tasks
+# Caching & Task Distribution
+redis==5.0.1
+celery==5.3.4
+
+# Monitoring & Metrics
+prometheus-client==0.19.0
+python-prometheus-grafana==0.1.0
+
+# Network & Proxy Integration
+mitmproxy==10.0.0
+pyopenssl==23.3.0
+
+# SBOM Generation
+cyclonedx-python==4.1.0
+
+# Retry & Backoff
+tenacity==8.2.3
+backoff==2.2.1
+
+# Android Integration
+adb-shell==0.3.5
+
+# Cloud Integration (optional)
+# google-cloud-storage==2.14.0
