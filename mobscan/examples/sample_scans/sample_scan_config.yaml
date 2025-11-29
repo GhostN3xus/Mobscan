@@ -1,0 +1,243 @@
+# Mobscan Sample Scan Configuration
+#
+# This is a complete example of a scan configuration file.
+# Use this as a template for your own scans.
+
+# Basic scan settings
+scan:
+  # Scan intensity: quick, standard, full, comprehensive
+  intensity: full
+
+  # Modules to run (comment out to disable)
+  modules:
+    - sast      # Static Application Security Testing
+    - dast      # Dynamic Application Security Testing
+    - frida     # Runtime instrumentation
+    - sca       # Software Composition Analysis
+    - sbom      # Software Bill of Materials
+
+  # Output formats
+  formats:
+    - json      # JSON report
+    - pdf       # PDF report
+    - markdown  # Markdown report
+    - html      # HTML dashboard
+
+  # MASVS compliance levels to check
+  masvs_levels:
+    - L1        # Standard security
+    - L2        # Defense in depth
+    # - R       # Resiliency against reverse engineering
+
+  # Parallel execution
+  parallel_workers: 4
+
+  # Global timeout (seconds)
+  timeout: 7200  # 2 hours
+
+  # Fail scan on findings
+  fail_on:
+    critical: true
+    high: false
+    medium: false
+
+# Platform-specific settings
+platforms:
+  android:
+    # Use emulator for dynamic analysis
+    emulator:
+      enabled: true
+      name: "mobscan_emulator"
+      api_level: 30
+      arch: x86_64
+
+    # ADB settings
+    adb:
+      install_app: true
+      grant_permissions: true
+      clear_data: true
+
+    # Frida settings
+    frida:
+      server_version: "16.0.11"
+      auto_spawn: true
+      scripts_dir: "./frida_scripts"
+
+  ios:
+    # iOS device/simulator settings
+    device:
+      udid: "auto"  # Auto-detect or specific UDID
+      version: "16.0"
+
+    # Frida settings
+    frida:
+      server_version: "16.0.11"
+      auto_spawn: true
+
+# Tool configurations
+tools:
+  # MobSF integration
+  mobsf:
+    enabled: true
+    url: "http://localhost:8000"
+    api_key: "${MOBSF_API_KEY}"  # Use environment variable
+    timeout: 600
+
+  # Frida configuration
+  frida:
+    enabled: true
+    timeout_per_script: 60
+    heap_limit: "512M"
+    custom_scripts:
+      - "./custom_hooks/ssl_bypass.js"
+      - "./custom_hooks/root_detection.js"
+
+  # mitmproxy configuration
+  mitmproxy:
+    enabled: true
+    port: 8080
+    mode: "regular"  # regular, transparent, socks5
+    capture_websockets: true
+    capture_all_traffic: false
+
+  # Burp Suite
+  burp:
+    enabled: false
+    api_url: "http://localhost:1337"
+    api_key: "${BURP_API_KEY}"
+
+# Static analysis settings
+sast:
+  # Decompilation
+  decompile:
+    tool: "jadx"  # jadx, apktool, ghidra
+    output_dir: "./decompiled"
+
+  # Code analysis
+  analyze:
+    check_permissions: true
+    check_intents: true
+    check_content_providers: true
+    check_broadcast_receivers: true
+    find_secrets: true
+    find_urls: true
+    find_crypto: true
+    check_manifest: true
+
+  # Pattern matching
+  patterns:
+    custom_rules: "./custom_rules.yaml"
+    ignore_test_code: true
+
+# Dynamic analysis settings
+dast:
+  # Network analysis
+  network:
+    capture_traffic: true
+    ssl_interception: true
+    certificate_pinning_bypass: true
+
+  # API testing
+  api:
+    discover_endpoints: true
+    test_authentication: true
+    test_authorization: true
+    fuzz_parameters: true
+    check_rate_limiting: true
+
+  # UI automation
+  ui:
+    enabled: true
+    tool: "appium"  # appium, uiautomator2
+    test_duration: 300  # seconds
+    monkey_events: 1000
+
+# Reporting settings
+reporting:
+  # Include in reports
+  include:
+    evidence: true
+    screenshots: true
+    network_logs: true
+    frida_logs: true
+    source_code: false
+
+  # Report customization
+  customize:
+    company_name: "Your Company"
+    logo_path: "./assets/logo.png"
+    executive_summary: true
+    technical_details: true
+    remediation_guide: true
+
+  # MASVS mapping
+  masvs:
+    show_coverage: true
+    show_gaps: true
+    compliance_threshold: 80  # percentage
+
+# Advanced settings
+advanced:
+  # Caching
+  cache:
+    enabled: true
+    directory: "./.mobscan_cache"
+    ttl: 86400  # 24 hours
+
+  # Logging
+  logging:
+    level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+    file: "./mobscan.log"
+    rotate: true
+    max_size: "100M"
+
+  # Performance
+  performance:
+    memory_limit: "4G"
+    cpu_limit: 4
+    nice_level: 10
+
+  # Plugins
+  plugins:
+    directory: "./plugins"
+    auto_load: true
+    whitelist:
+      - "custom_analyzer"
+      - "report_formatter"
+
+# Notifications (optional)
+notifications:
+  enabled: false
+
+  # Slack webhook
+  slack:
+    webhook_url: "${SLACK_WEBHOOK}"
+    channel: "#security-alerts"
+    mention_on_critical: true
+
+  # Email
+  email:
+    smtp_server: "smtp.example.com"
+    smtp_port: 587
+    from: "mobscan@example.com"
+    to:
+      - "security@example.com"
+    send_on: ["critical", "high"]
+
+# Environment variables
+environment:
+  # Variables available during scan
+  variables:
+    API_BASE_URL: "https://api.example.com"
+    TEST_USERNAME: "testuser"
+    TEST_PASSWORD: "${TEST_PASSWORD}"  # Load from env
+
+# Metadata
+metadata:
+  project_name: "Sample Mobile App Scan"
+  version: "1.0.0"
+  description: "Complete security assessment of mobile application"
+  tags:
+    - "production"
+    - "android"
+    - "high-priority"

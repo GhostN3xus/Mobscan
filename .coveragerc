@@ -1,0 +1,61 @@
+# Coverage.py configuration for Mobscan
+
+[run]
+branch = True
+source = mobscan
+omit =
+    */tests/*
+    */test_*
+    */__pycache__/*
+    */site-packages/*
+    */venv/*
+    */env/*
+    */dist/*
+    */build/*
+    */.eggs/*
+    */migrations/*
+    */conftest.py
+
+[report]
+precision = 2
+show_missing = True
+skip_covered = False
+skip_empty = True
+
+exclude_lines =
+    # Standard pragma
+    pragma: no cover
+
+    # Don't complain about missing debug code
+    def __repr__
+    def __str__
+
+    # Don't complain if tests don't hit defensive assertion code
+    raise AssertionError
+    raise NotImplementedError
+
+    # Don't complain if non-runnable code isn't run
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+
+    # Don't complain about abstract methods
+    @abstractmethod
+    @abc.abstractmethod
+
+    # Don't complain about pass statements
+    pass
+
+    # Don't complain about ellipsis
+    ...
+
+[html]
+directory = htmlcov
+title = Mobscan Coverage Report
+
+[xml]
+output = coverage.xml
+
+[paths]
+source =
+    mobscan/
+    */site-packages/mobscan/

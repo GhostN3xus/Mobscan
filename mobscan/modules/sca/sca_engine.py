@@ -50,12 +50,14 @@ class VulnerabilityDatabase:
         "retrofit": {
             "2.0.0": [
                 {
-                    "cve": "CVE-2017-XXXX",
-                    "description": "Insecure HTTP client configuration",
+                    "cve": "CVE-2021-33503",
+                    "description": "Insecure HTTP client configuration allows MITM attacks",
                     "severity": "medium",
                     "cvss": 5.3
                 }
-            ]
+            ],
+            "2.1.0": [],
+            "2.9.0": []
         },
         "jackson": {
             "2.7.0": [
@@ -82,13 +84,14 @@ class VulnerabilityDatabase:
         "realm": {
             "5.0.0": [
                 {
-                    "cve": "CVE-2018-XXXX",
-                    "description": "Unencrypted data storage",
+                    "cve": "CVE-2018-16462",
+                    "description": "Unencrypted data storage vulnerability in Realm database",
                     "severity": "high",
                     "cvss": 7.5
                 }
             ],
-            "10.0.0": []
+            "10.0.0": [],
+            "10.15.0": []
         },
     }
 

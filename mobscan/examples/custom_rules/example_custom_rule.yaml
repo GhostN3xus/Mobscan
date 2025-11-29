@@ -1,0 +1,202 @@
+# Mobscan Custom Security Rule Example
+#
+# This file demonstrates how to create custom security rules for Mobscan.
+# Rules are defined in YAML format and can be loaded dynamically during scans.
+
+rules:
+  # Rule 1: Detect hardcoded API keys
+  - id: CUSTOM-001
+    name: Hardcoded API Keys
+    severity: critical
+    category: MASTG-STORAGE-2
+    description: |
+      Detects hardcoded API keys in application code or resources.
+      API keys should be stored securely and never hardcoded.
+
+    patterns:
+      - type: regex
+        pattern: '(api[_-]?key|apikey)\s*[:=]\s*["\']([a-zA-Z0-9]{20,})["\']'
+        case_insensitive: true
+
+      - type: regex
+        pattern: 'Authorization:\s*Bearer\s+[a-zA-Z0-9\-._~+/]+=*'
+
+      - type: string_match
+        strings:
+          - "AIzaSy"  # Google API key prefix
+          - "AKIA"    # AWS access key prefix
+          - "sk_live_"  # Stripe secret key prefix
+          - "pk_live_"  # Stripe public key prefix
+
+    remediation: |
+      Store API keys in:
+      1. Android: Use Android Keystore System or EncryptedSharedPreferences
+      2. iOS: Use iOS Keychain Services
+      3. Both: Use environment variables or secure configuration management
+      4. Consider using OAuth 2.0 or similar for authentication
+
+    cvss_score: 9.1
+    cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"
+    cwe: ["CWE-798", "CWE-259"]
+    masvs: ["MSTG-STORAGE-14"]
+
+  # Rule 2: Insecure WebView configuration
+  - id: CUSTOM-002
+    name: Insecure WebView Configuration
+    severity: high
+    category: MASTG-PLATFORM-2
+    description: |
+      Detects WebView instances with JavaScript enabled or file access allowed.
+      This can lead to XSS and local file disclosure vulnerabilities.
+
+    patterns:
+      - type: code_pattern
+        language: java
+        pattern: |
+          webView.getSettings().setJavaScriptEnabled(true)
+
+      - type: code_pattern
+        language: kotlin
+        pattern: |
+          webView.settings.javaScriptEnabled = true
+
+      - type: code_pattern
+        language: java
+        pattern: |
+          setAllowFileAccess(true)
+
+    remediation: |
+      1. Disable JavaScript unless absolutely necessary
+      2. Disable file access: setAllowFileAccess(false)
+      3. Disable file URL access: setAllowFileAccessFromFileURLs(false)
+      4. Validate and sanitize all URLs loaded in WebView
+      5. Implement proper JavaScript interfaces with @JavascriptInterface
+
+    cvss_score: 7.4
+    cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:N/A:N"
+    cwe: ["CWE-79", "CWE-94"]
+    masvs: ["MSTG-PLATFORM-5"]
+
+  # Rule 3: Weak cryptographic algorithm
+  - id: CUSTOM-003
+    name: Weak Cryptographic Algorithm
+    severity: high
+    category: MASTG-CRYPTO-1
+    description: |
+      Detects use of weak or deprecated cryptographic algorithms like MD5, SHA1, DES.
+
+    patterns:
+      - type: string_match
+        strings:
+          - "MD5"
+          - "SHA1"
+          - "DES"
+          - "RC4"
+          - "ECB"
+
+      - type: regex
+        pattern: 'MessageDigest\.getInstance\(["\'](MD5|SHA-?1)["\']'
+
+      - type: regex
+        pattern: 'Cipher\.getInstance\(["\'](DES|RC4|AES/ECB)["\']'
+
+    remediation: |
+      Use strong cryptographic algorithms:
+      1. Hashing: Use SHA-256, SHA-384, or SHA-512
+      2. Symmetric encryption: Use AES-256 in GCM mode
+      3. Asymmetric encryption: Use RSA-2048 or higher, or ECC
+      4. Never use: MD5, SHA1, DES, RC4, or ECB mode
+
+    cvss_score: 7.5
+    cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+    cwe: ["CWE-327", "CWE-326"]
+    masvs: ["MSTG-CRYPTO-4"]
+
+  # Rule 4: SQL Injection vulnerability
+  - id: CUSTOM-004
+    name: SQL Injection Risk
+    severity: critical
+    category: MASTG-PLATFORM-2
+    description: |
+      Detects potential SQL injection vulnerabilities from string concatenation in queries.
+
+    patterns:
+      - type: regex
+        pattern: '(execSQL|rawQuery)\s*\(\s*".*"\s*\+\s*'
+
+      - type: regex
+        pattern: 'query\s*\(\s*.*,\s*".*"\s*\+\s*'
+
+    remediation: |
+      Always use parameterized queries:
+      1. Use SQLiteDatabase.query() with selectionArgs
+      2. Use prepared statements with placeholders (?)
+      3. Never concatenate user input into SQL queries
+      4. Consider using Room ORM for type-safe database access
+
+    cvss_score: 9.8
+    cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    cwe: ["CWE-89"]
+    masvs: ["MSTG-PLATFORM-2"]
+
+  # Rule 5: Insecure SSL/TLS configuration
+  - id: CUSTOM-005
+    name: Insecure SSL/TLS Configuration
+    severity: critical
+    category: MASTG-NETWORK-1
+    description: |
+      Detects disabled SSL certificate validation or use of insecure TrustManager.
+
+    patterns:
+      - type: code_pattern
+        language: java
+        pattern: |
+          new X509TrustManager() {
+              public void checkClientTrusted
+              public void checkServerTrusted
+          }
+
+      - type: string_match
+        strings:
+          - "setHostnameVerifier(ALLOW_ALL"
+          - "SSLSocketFactory.ALLOW_ALL"
+
+    remediation: |
+      1. Never disable certificate validation in production
+      2. Use the default TrustManager provided by the platform
+      3. Implement certificate pinning for critical connections
+      4. Use HTTPS only, never HTTP for sensitive data
+      5. Validate certificate chain and hostname
+
+    cvss_score: 9.1
+    cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"
+    cwe: ["CWE-295", "CWE-297"]
+    masvs: ["MSTG-NETWORK-3"]
+
+# Global settings for custom rules
+settings:
+  enabled: true
+  fail_on_critical: true
+  fail_on_high: false
+  output_format: json
+
+  # File patterns to scan
+  include_patterns:
+    - "**/*.java"
+    - "**/*.kt"
+    - "**/*.xml"
+    - "**/*.json"
+
+  # File patterns to ignore
+  exclude_patterns:
+    - "**/test/**"
+    - "**/androidTest/**"
+    - "**/build/**"
+    - "**/.gradle/**"
+
+# Metadata
+metadata:
+  version: "1.0.0"
+  author: "Mobscan Security Team"
+  created: "2025-01-01"
+  description: "Example custom security rules for mobile applications"
