@@ -1,0 +1,353 @@
+# Mobscan v1.1.0 - Complete Configuration Example
+# This is a comprehensive example showing all available configuration options
+
+version: "1.1.0"
+
+# Application Information
+app:
+  name: "Example Mobile App"
+  package_name: "com.example.app"
+  platform: "android"  # android or ios
+
+# Scan Configuration
+scan:
+  # Scan intensity: quick, standard, full, comprehensive
+  intensity: "comprehensive"
+
+  # Timeout in seconds
+  timeout: 3600
+
+  # Number of parallel workers (1-16)
+  parallel_workers: 4
+
+  # Enable or disable specific modules
+  modules:
+    sast: true      # Static Application Security Testing
+    dast: true      # Dynamic Application Security Testing
+    frida: true     # Runtime Instrumentation
+    sca: true       # Software Composition Analysis
+
+# SAST Configuration (Static Analysis)
+sast:
+  # Enable specific SAST tests
+  enabled: true
+
+  tests:
+    hardcoded_secrets: true
+    weak_cryptography: true
+    insecure_storage: true
+    manifest_analysis: true
+    permission_analysis: true
+    debuggable_flag: true
+    exported_components: true
+    vulnerable_dependencies: true
+
+  # Patterns for custom secret detection
+  custom_patterns:
+    - pattern: '(api_key|apikey)\s*=\s*["\']([^"\']+)["\']'
+      name: "Custom API Key Pattern"
+      severity: "critical"
+
+# DAST Configuration (Dynamic Analysis)
+dast:
+  enabled: true
+
+  # Proxy configuration
+  proxy:
+    enabled: true
+    host: "127.0.0.1"
+    port: 8080
+    cert_file: null  # Path to certificate if needed
+
+  # Tests to perform
+  tests:
+    network_security: true
+    certificate_validation: true
+    security_headers: true
+    api_endpoints: true
+    authentication: true
+    data_exposure: true
+
+  # Captured flow analysis
+  analyze_traffic: true
+
+  # Maximum requests to capture
+  max_requests: 1000
+
+# Frida Configuration (Runtime Instrumentation)
+frida:
+  enabled: true
+
+  # Frida server configuration
+  host: "127.0.0.1"
+  port: 27042
+
+  # Tests to perform
+  tests:
+    root_detection: true
+    jailbreak_detection: true
+    debugger_detection: true
+    ssl_pinning: true
+    crypto_monitoring: true
+    storage_monitoring: true
+    network_monitoring: true
+
+  # Timeout for Frida operations (seconds)
+  timeout: 30
+
+  # Automatically install Frida on device
+  auto_install: false
+
+  # Custom Frida scripts
+  custom_scripts:
+    - name: "custom_hook"
+      path: "./frida_scripts/custom.js"
+      enabled: true
+
+# SCA Configuration (Dependency Analysis)
+sca:
+  enabled: true
+
+  # Dependency extraction
+  extract:
+    gradle: true
+    maven: true
+    cocoapods: true
+    spm: true
+
+  # Vulnerability checking
+  check_vulnerabilities: true
+  check_outdated: true
+  check_licenses: true
+
+  # Generate SBOM
+  generate_sbom: true
+  sbom_format: "cyclonedx"  # or spdx
+
+  # CVE databases to use
+  databases:
+    - nvd
+    - osv
+    - custom
+
+  # High risk dependency patterns
+  high_risk_patterns:
+    - "webview"
+    - "exec"
+    - "reflection"
+    - "crypto"
+    - "process"
+
+# Reporting Configuration
+reporting:
+  # Output directory
+  output_dir: "./scan_results"
+
+  # Report formats to generate
+  formats:
+    - json
+    - html
+    - pdf
+    - markdown
+
+  # Report templates
+  templates:
+    executive_summary: true
+    detailed_findings: true
+    risk_metrics: true
+    masvs_compliance: true
+    recommendations: true
+
+  # Include evidence in reports
+  include_evidence: true
+  include_remediation: true
+
+  # Report styling
+  style: "professional"  # professional or minimal
+
+# Plugin Configuration
+plugins:
+  # Enable plugin system
+  enabled: true
+
+  # Plugin directories to scan
+  directories:
+    - "./mobscan/plugins"
+    - "./plugins"
+
+  # Plugins to load
+  load:
+    - "custom_analyzer"
+    - "slack_reporter"
+    - "jira_integration"
+
+  # Plugin configurations
+  configurations:
+    custom_analyzer:
+      enabled: true
+      severity_threshold: "medium"
+
+    slack_reporter:
+      enabled: true
+      webhook_url: "${SLACK_WEBHOOK}"
+      channel: "#security"
+
+    jira_integration:
+      enabled: true
+      url: "${JIRA_URL}"
+      project: "SEC"
+      issue_type: "Bug"
+
+# Integration Configuration
+integrations:
+  # Slack notifications
+  slack:
+    enabled: false
+    webhook_url: null
+    channel: "#security"
+    notify_on:
+      - critical
+      - high
+
+  # JIRA issue creation
+  jira:
+    enabled: false
+    url: null
+    username: null
+    api_token: null
+    project: "SECURITY"
+    issue_type: "Security Vulnerability"
+
+  # GitHub integration
+  github:
+    enabled: false
+    token: null
+    repo: null
+    create_issues: false
+
+  # Email notifications
+  email:
+    enabled: false
+    server: null
+    port: 587
+    from: "mobscan@example.com"
+    to:
+      - "security@example.com"
+
+# Database Configuration (Optional)
+database:
+  enabled: false
+  type: "sqlite"  # sqlite, postgresql, mysql
+  connection_string: null
+
+  # Auto-save scan results
+  auto_save: true
+
+  # Historical data retention (days)
+  retention_days: 365
+
+# Logging Configuration
+logging:
+  # Log level: debug, info, warning, error, critical
+  level: "info"
+
+  # Log file
+  file: "./mobscan.log"
+
+  # Log format
+  format: "[%(asctime)s] %(levelname)s - %(name)s: %(message)s"
+
+  # Log rotation
+  rotation:
+    enabled: true
+    max_size_mb: 10
+    backup_count: 5
+
+# Advanced Configuration
+advanced:
+  # Custom rules file
+  rules_file: "./rules.yaml"
+
+  # Risk scoring algorithm
+  risk_algorithm: "owasp_masvs"
+
+  # Finding deduplication strategy
+  deduplication: "strict"  # loose or strict
+
+  # Performance tuning
+  performance:
+    # Use caching
+    enable_cache: true
+
+    # Cache TTL in seconds
+    cache_ttl: 3600
+
+    # Optimize for speed vs accuracy
+    optimization: "balanced"  # speed, balanced, accuracy
+
+# MASVS/MASTG Compliance
+compliance:
+  # Check against MASVS levels
+  masvs_levels:
+    - L1
+    - L2
+    - R  # Resilience
+
+  # Generate compliance report
+  generate_report: true
+
+  # Target compliance level
+  target_level: "L2"
+
+# Exclusions and Filters
+exclusions:
+  # Files/directories to exclude from analysis
+  paths:
+    - "*.backup"
+    - "test/"
+    - "example/"
+
+  # Permission exclusions
+  permissions:
+    - "INTERNET"
+    - "ACCESS_NETWORK_STATE"
+
+  # Library exclusions
+  libraries:
+    - "google-play-services"
+
+# Performance Options
+performance:
+  # Parallel execution
+  parallel: true
+  max_threads: 4
+
+  # Timeout multipliers
+  timeout_multiplier: 1.0
+
+  # Memory limit (MB)
+  memory_limit: 2048
+
+# Output Options
+output:
+  # Verbose output
+  verbose: false
+
+  # Pretty print JSON
+  pretty_json: true
+
+  # Color output in terminal
+  colored_output: true
+
+# Development/Testing Options
+debug:
+  enabled: false
+
+  # Keep temporary files
+  keep_temp_files: false
+
+  # Save intermediate results
+  save_intermediates: false
+
+  # Mock mode (for testing)
+  mock_mode: false
