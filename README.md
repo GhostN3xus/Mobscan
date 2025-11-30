@@ -174,7 +174,7 @@
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/mobscan.git
+git clone https://github.com/GhostN3xus/Mobscan.git
 cd mobscan
 
 # Install with dependencies
